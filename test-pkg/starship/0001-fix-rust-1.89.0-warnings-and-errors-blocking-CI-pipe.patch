@@ -1,0 +1,113 @@
+From e3fb02f3a3ccc83c37dd4362c9eb4b0a6118540a Mon Sep 17 00:00:00 2001
+From: Siddharth Kumar Jha <siddharth.k.jha@proton.me>
+Date: Thu, 7 Aug 2025 23:50:23 +0530
+Subject: [PATCH 1/2] fix rust 1.89.0 warnings and errors blocking CI pipeline
+
+---
+ src/configure.rs        | 2 +-
+ src/context.rs          | 2 +-
+ src/formatter/parser.rs | 4 ++--
+ src/module.rs           | 4 ++--
+ src/segment.rs          | 6 +++---
+ 5 files changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/src/configure.rs b/src/configure.rs
+index f66d014c..930ad54a 100644
+--- a/src/configure.rs
++++ b/src/configure.rs
+@@ -653,7 +653,7 @@ mod tests {
+         dir: &TempDir,
+         home_file_exists: bool,
+         starship_config_env_scenario: StarshipConfigEnvScenario,
+-    ) -> io::Result<Context> {
++    ) -> io::Result<Context<'_>> {
+         let config_path = dir.path().to_path_buf().join(".config");
+         create_dir(&config_path)?;
+         let home_starship_toml = config_path.join("starship.toml");
+diff --git a/src/context.rs b/src/context.rs
+index e2acf811..dbb68410 100644
+--- a/src/context.rs
++++ b/src/context.rs
+@@ -220,7 +220,7 @@ impl<'a> Context<'a> {
+     }
+ 
+     /// Create a new module
+-    pub fn new_module(&self, name: &str) -> Module {
++    pub fn new_module(&self, name: &str) -> Module<'_> {
+         let config = self.config.get_module_config(name);
+         let desc = modules::description(name);
+ 
+diff --git a/src/formatter/parser.rs b/src/formatter/parser.rs
+index a21d6edf..2f9f32ef 100644
+--- a/src/formatter/parser.rs
++++ b/src/formatter/parser.rs
+@@ -33,7 +33,7 @@ fn parse_textgroup(textgroup: Pair<Rule>) -> TextGroup {
+     }
+ }
+ 
+-fn parse_variable(variable: Pair<Rule>) -> &str {
++fn parse_variable(variable: Pair<'_, Rule>) -> &str {
+     variable.into_inner().next().unwrap().as_str()
+ }
+ 
+@@ -58,7 +58,7 @@ fn parse_style(style: Pair<Rule>) -> Vec<StyleElement> {
+         .collect()
+ }
+ 
+-pub fn parse(format: &str) -> Result<Vec<FormatElement>, Box<Error<Rule>>> {
++pub fn parse(format: &str) -> Result<Vec<FormatElement<'_>>, Box<Error<Rule>>> {
+     IdentParser::parse(Rule::expression, format)
+         .map(|pairs| {
+             pairs
+diff --git a/src/module.rs b/src/module.rs
+index 854dc3b3..81f2298a 100644
+--- a/src/module.rs
++++ b/src/module.rs
+@@ -173,11 +173,11 @@ impl<'a> Module<'a> {
+ 
+     /// Returns a vector of colored `AnsiString` elements to be later used with
+     /// `AnsiStrings()` to optimize ANSI codes
+-    pub fn ansi_strings(&self) -> Vec<AnsiString> {
++    pub fn ansi_strings(&self) -> Vec<AnsiString<'_>> {
+         self.ansi_strings_for_width(None)
+     }
+ 
+-    pub fn ansi_strings_for_width(&self, width: Option<usize>) -> Vec<AnsiString> {
++    pub fn ansi_strings_for_width(&self, width: Option<usize>) -> Vec<AnsiString<'_>> {
+         let mut iter = self.segments.iter().peekable();
+         let mut ansi_strings: Vec<AnsiString> = Vec::new();
+         while iter.peek().is_some() {
+diff --git a/src/segment.rs b/src/segment.rs
+index 8ab08c10..443ef7a7 100644
+--- a/src/segment.rs
++++ b/src/segment.rs
+@@ -17,7 +17,7 @@ pub struct TextSegment {
+ 
+ impl TextSegment {
+     // Returns the AnsiString of the segment value
+-    fn ansi_string(&self, prev: Option<&AnsiStyle>) -> AnsiString {
++    fn ansi_string(&self, prev: Option<&AnsiStyle>) -> AnsiString<'_> {
+         match self.style {
+             Some(style) => style.to_ansi_style(prev).paint(&self.value),
+             None => AnsiString::from(&self.value),
+@@ -37,7 +37,7 @@ pub struct FillSegment {
+ 
+ impl FillSegment {
+     // Returns the AnsiString of the segment value, not including its prefix and suffix
+-    pub fn ansi_string(&self, width: Option<usize>, prev: Option<&AnsiStyle>) -> AnsiString {
++    pub fn ansi_string(&self, width: Option<usize>, prev: Option<&AnsiStyle>) -> AnsiString<'_> {
+         let s = match width {
+             Some(w) => self
+                 .value
+@@ -157,7 +157,7 @@ impl Segment {
+     }
+ 
+     // Returns the AnsiString of the segment value, not including its prefix and suffix
+-    pub fn ansi_string(&self, prev: Option<&AnsiStyle>) -> AnsiString {
++    pub fn ansi_string(&self, prev: Option<&AnsiStyle>) -> AnsiString<'_> {
+         match self {
+             Self::Fill(fs) => fs.ansi_string(None, prev),
+             Self::Text(ts) => ts.ansi_string(prev),
+-- 
+2.50.1
+
