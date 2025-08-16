@@ -1,14 +1,4 @@
-Proto = {
-	git = 1,
-	patch = 2,
-}
-
 -- Create reverse lookup
-ProtoStr = {}
-for k, v in pairs(Proto) do
-	ProtoStr[v] = k
-end
-
 PkgInfo = {
 	name = "starship",
 	desc = "The cross-shell prompt for astronauts",
@@ -55,7 +45,7 @@ end
 function Prepare()
 	for _, s in ipairs(Source) do
 		if s.proto == Proto.patch then
-			local patch_cmd = ProtoStr[s.proto] .. " -d starship -p1 < " .. s.file
+			local patch_cmd = s.proto .. " -d starship -p1 < " .. s.file
 			print(patch_cmd)
 			os.execute(patch_cmd)
 		end
@@ -141,7 +131,7 @@ end
 function Fetch()
 	for _, s in ipairs(Source) do
 		if s.proto == Proto.git then
-			local clone_cmd = ProtoStr[s.proto] .. " clone " .. s.url .. " -b " .. s.tag .. " " .. s.directory
+			local clone_cmd = s.proto .. " clone " .. s.url .. " -b " .. s.tag .. " " .. s.directory
 			print(clone_cmd)
 			os.execute(clone_cmd)
 		end
