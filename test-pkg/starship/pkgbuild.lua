@@ -1,34 +1,41 @@
--- Create reverse lookup
-PkgInfo = {
+local pkg_info = {
 	name = "starship",
 	desc = "The cross-shell prompt for astronauts",
 	ver = "1.23.0",
 	rel = 1,
 }
 
-Url = "https://starship.rs/"
-License = { "ISC" }
-Depends = { "gcc-libs", "glibc" }
-MakeDepends = { "cmake", "git", "rust" }
-CheckDepends = { "python" }
-OptDepends = { "ttf-font-nerd: Nerd Font Symbols preset" }
+local github_link = "https://github.com" .. "/" .. pkg_info.name .. "/" .. pkg_info.name
+local pkg_tag = "v" .. pkg_info.ver
 
-GitHubLink = "https://github.com" .. "/" .. PkgInfo.name .. "/" .. PkgInfo.name
-Source = {
-	{
-		proto = Proto.git,
-		url = GitHubLink,
-		tag = "v" .. PkgInfo.ver,
-		directory = "starship",
+Package = {
+	pkg = pkg_info,
+
+	url = "https://starship.rs/",
+	license = { "ISC" },
+	depends = { "gcc-libs", "glibc" },
+	make_depends = { "cmake", "git", "rust" },
+	check_depends = { "python" },
+	opt_depends = { { name = "ttf-font-nerd", desc = "Nerd Font Symbols preset" } },
+	-- or alternative
+	-- opt_depends = { "ttf-font-nerd" },
+
+	source = {
+		{
+			proto = Proto.git,
+			url = github_link,
+			tag = pkg_tag,
+			directory = "starship",
+		},
+		{ proto = Proto.file, file = "./0001-fix-rust-1.89.0-warnings-and-errors-blocking-CI-pipe.patch" },
+		{ proto = Proto.file, file = "./0002-fix-git-tests-spawning-an-editor.patch" },
 	},
-	{ proto = Proto.patch, file = "./0001-fix-rust-1.89.0-warnings-and-errors-blocking-CI-pipe.patch" },
-	{ proto = Proto.patch, file = "./0002-fix-git-tests-spawning-an-editor.patch" },
-}
 
-Sha256Sums = {
-	"SKIP",
-	"2e66eff0249f87f1deb1dfd0916d1017c1772a05a7627668d8855a3f227908e8",
-	"41e085267c1a8c60b29442a8376c4cf2c1f98f658b13ff17370887413047e7f4",
+	checksum = {
+		Skip,
+		{ kind = CheckSumKind.sha256, digest = "2e66eff0249f87f1deb1dfd0916d1017c1772a05a7627668d8855a3f227908e8" },
+		{ kind = CheckSumKind.sha256, digest = "41e085267c1a8c60b29442a8376c4cf2c1f98f658b13ff17370887413047e7f4" },
+	},
 }
 
 function Run(cmd)
@@ -43,9 +50,9 @@ function GetHost(rustc_output)
 end
 
 function Prepare()
-	for _, s in ipairs(Source) do
-		if s.proto == Proto.patch then
-			local patch_cmd = s.proto .. " -d starship -p1 < " .. s.file
+	for _, s in ipairs(Package.source) do
+		if s.proto == Proto.file then
+			local patch_cmd = "patch" .. " -d starship -p1 < " .. s.file
 			print(patch_cmd)
 			os.execute(patch_cmd)
 		end
@@ -72,18 +79,18 @@ function Check()
 	os.execute(cargo_cmd)
 end
 
-function Package()
+function Install()
 	local install_starship = table.concat({
 		"install -Dm 755 target/release/starship -t " .. PkgDir .. "/usr/bin",
 		"install -Dm 644 starship/LICENSE -t " .. PkgDir .. "/usr/share/licenses/starship/",
 		"install -dm 755 "
-		.. PkgDir
-		.. "/usr/share/{bash-completion/completions,elvish/lib,fish/vendor_completions.d,zsh/site-functions}/",
+			.. PkgDir
+			.. "/usr/share/{bash-completion/completions,elvish/lib,fish/vendor_completions.d,zsh/site-functions}/",
 		"./target/release/starship completions bash > " .. PkgDir .. "/usr/share/bash-completion/completions/starship",
 		"./target/release/starship completions elvish > " .. PkgDir .. "/usr/share/elvish/lib/starship.elv",
 		"./target/release/starship completions fish > "
-		.. PkgDir
-		.. "/usr/share/fish/vendor_completions.d/starship.fish",
+			.. PkgDir
+			.. "/usr/share/fish/vendor_completions.d/starship.fish",
 		"./target/release/starship completions zsh > " .. PkgDir .. "/usr/share/zsh/site-functions/_starship",
 	}, "\n")
 	print(install_starship)
@@ -98,7 +105,7 @@ local function get_filename_from_url(url)
 end
 
 function Verify()
-	for i, s in ipairs(Source) do
+	for i, s in ipairs(Package.source) do
 		local file_name
 		if s.file ~= nil then
 			file_name = s.file
@@ -108,19 +115,21 @@ function Verify()
 			error("no file passed to source?")
 		end
 
-		if Sha256Sums[i] ~= "SKIP" then
-			local actual_sha = Run("sha256sum " .. file_name):match("^([a-f0-9]+)")
-			if actual_sha ~= Sha256Sums[i] then
+		if Package.checksum[i] ~= Skip then
+			local actual_sha = Run(Package.checksum[i].kind .. "sum " .. file_name):match("^([a-f0-9]+)")
+			if actual_sha ~= Package.checksum[i].digest then
 				error(
-					"Sha256Sums mismatch, expected: "
-					.. Sha256Sums[i]
-					.. " got "
-					.. actual_sha
-					.. " for file "
-					.. file_name
+					"CheckSum "
+						.. Package.checksum[i].kind
+						.. " mismatch, expected: "
+						.. Package.checksum[i].digest
+						.. " got "
+						.. actual_sha
+						.. " for file "
+						.. file_name
 				)
 			else
-				print("sha256 for " .. file_name .. " successfully validated")
+				print(Package.checksum[i].kind .. " for " .. file_name .. " successfully validated")
 			end
 		else
 			print("for ", file_name, " SKIP sha check requested")
@@ -139,7 +148,7 @@ function Fetch()
 end
 
 -- control flow
--- download source -> verify() -> extract source -> prepare() -> build() -> check() -> package()
+-- download source -> verify() -> extract source -> prepare() -> build() -> check() -> install()
 function Test_fn()
 	PkgDir = "/home/siddharth/tst/"
 	Fetch()
@@ -147,5 +156,5 @@ function Test_fn()
 	Prepare()
 	Build()
 	Check()
-	Package()
+	Install()
 end
