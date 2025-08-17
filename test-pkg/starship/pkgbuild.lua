@@ -38,6 +38,8 @@ Package = {
 	},
 }
 
+print("install dir: ", InstallDir)
+
 function Run(cmd)
 	local handle = io.popen(cmd .. " 2>&1")
 	local output = handle:read("*a")
@@ -81,17 +83,17 @@ end
 
 function Install()
 	local install_starship = table.concat({
-		"install -Dm 755 target/release/starship -t " .. PkgDir .. "/usr/bin",
-		"install -Dm 644 starship/LICENSE -t " .. PkgDir .. "/usr/share/licenses/starship/",
+		"install -Dm 755 target/release/starship -t " .. InstallDir .. "/usr/bin",
+		"install -Dm 644 starship/LICENSE -t " .. InstallDir .. "/usr/share/licenses/starship/",
 		"install -dm 755 "
-			.. PkgDir
+			.. InstallDir
 			.. "/usr/share/{bash-completion/completions,elvish/lib,fish/vendor_completions.d,zsh/site-functions}/",
-		"./target/release/starship completions bash > " .. PkgDir .. "/usr/share/bash-completion/completions/starship",
-		"./target/release/starship completions elvish > " .. PkgDir .. "/usr/share/elvish/lib/starship.elv",
+		"./target/release/starship completions bash > " .. InstallDir .. "/usr/share/bash-completion/completions/starship",
+		"./target/release/starship completions elvish > " .. InstallDir .. "/usr/share/elvish/lib/starship.elv",
 		"./target/release/starship completions fish > "
-			.. PkgDir
+			.. InstallDir
 			.. "/usr/share/fish/vendor_completions.d/starship.fish",
-		"./target/release/starship completions zsh > " .. PkgDir .. "/usr/share/zsh/site-functions/_starship",
+		"./target/release/starship completions zsh > " .. InstallDir .. "/usr/share/zsh/site-functions/_starship",
 	}, "\n")
 	print(install_starship)
 	os.execute(install_starship)
@@ -150,7 +152,6 @@ end
 -- control flow
 -- download source -> verify() -> extract source -> prepare() -> build() -> check() -> install()
 function Test_fn()
-	PkgDir = "/home/siddharth/tst/"
 	Fetch()
 	Verify()
 	Prepare()

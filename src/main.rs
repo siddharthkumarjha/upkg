@@ -8,6 +8,8 @@ use crate::sub_path::*;
 use mlua::prelude::*;
 use std::fs;
 
+static LOCAL_INSTALL_PATH: &str = "/home/siddharth/tst/";
+
 fn create_lua_instance() -> LuaResult<Lua> {
     let lua = Lua::new();
     lua.sandbox(true).with_context(lua_err_context!())?;
@@ -27,6 +29,10 @@ fn set_globals(lua: &Lua) -> LuaResult<()> {
     lua.globals()
         .set("Skip", CheckSumField::global_lua_value(lua)?)
         .with_context(lua_err_context!("setting global Skip failed"))?;
+
+    lua.globals()
+        .set("InstallDir", LOCAL_INSTALL_PATH)
+        .with_context(lua_err_context!("setting global InstallDir failed"))?;
 
     Ok(())
 }
