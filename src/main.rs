@@ -1,4 +1,5 @@
 mod err_context;
+mod git_clone;
 mod lua_types;
 mod sub_path;
 
@@ -6,6 +7,7 @@ use crate::lua_types::*;
 use crate::sub_path::*;
 
 use mlua::prelude::*;
+
 use std::fs;
 
 static LOCAL_INSTALL_PATH: &str = "/home/siddharth/tst/";
@@ -67,7 +69,20 @@ fn upkg() -> LuaResult<()> {
                     .with_context(lua_err_context!())?,
             )
             .with_context(lua_err_context!())?;
-        println!("{:#?}", pkg);
+        println!("{:#?}", &pkg);
+
+        for s in pkg.source.0 {
+            match s.proto {
+                Proto::git => {
+                    let url = s.location;
+                    match git_clone::git_clone(&url, std::env::temp_dir(), None) {
+                        Ok(r) => r,
+                        Err(e) => panic!("failed to clone {}", e),
+                    };
+                }
+                _ => println!("got loc: {}", s.location),
+            }
+        }
 
         Ok(())
     } else {

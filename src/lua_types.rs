@@ -11,11 +11,11 @@ pub trait LuaGTableValue {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PkgInfo {
-    name: String,
-    ver: String,
+    pub name: String,
+    pub ver: String,
     #[serde(default)]
-    rel: Option<u32>,
-    desc: String,
+    pub rel: Option<u32>,
+    pub desc: String,
 }
 
 #[derive(EnumIter, Serialize, Deserialize, Debug)]
@@ -93,26 +93,26 @@ impl LuaGTableValue for CheckSumField {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]
-pub struct CheckSum(Vec<CheckSumField>);
+pub struct CheckSum(pub Vec<CheckSumField>);
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SourceField {
-    proto: Proto,
+    pub proto: Proto,
 
     #[serde(alias = "url", alias = "file")]
-    location: String,
+    pub location: String,
 
     #[serde(alias = "tag", alias = "branch")]
     #[serde(default)]
-    checkout: Option<String>,
+    pub checkout: Option<String>,
 
     #[serde(default)]
-    directory: Option<String>,
+    pub directory: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]
-pub struct Source(Vec<SourceField>);
+pub struct Source(pub Vec<SourceField>);
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
@@ -131,31 +131,31 @@ pub enum DepInfo {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Package {
-    pkg: PkgInfo,
+    pub pkg: PkgInfo,
     #[serde(default)]
-    url: String,
+    pub url: String,
 
     #[serde(default)]
-    license: Vec<String>,
+    pub license: Vec<String>,
     #[serde(default)]
-    groups: Vec<String>,
+    pub groups: Vec<String>,
 
     #[serde(default)]
-    provides: Vec<DepInfo>,
+    pub provides: Vec<DepInfo>,
 
-    depends: Vec<DepInfo>,
+    pub depends: Vec<DepInfo>,
     #[serde(default)]
-    opt_depends: Vec<DepInfo>,
+    pub opt_depends: Vec<DepInfo>,
     #[serde(default)]
-    check_depends: Vec<DepInfo>,
+    pub check_depends: Vec<DepInfo>,
     #[serde(default)]
-    make_depends: Vec<DepInfo>,
+    pub make_depends: Vec<DepInfo>,
 
     #[serde(default)]
-    conflicts: Vec<DepInfo>,
+    pub conflicts: Vec<DepInfo>,
     #[serde(default)]
-    replaces: Vec<DepInfo>,
+    pub replaces: Vec<DepInfo>,
 
-    source: Source,
-    checksum: CheckSum,
+    pub source: Source,
+    pub checksum: CheckSum,
 }
