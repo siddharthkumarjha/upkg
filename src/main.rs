@@ -69,7 +69,6 @@ fn upkg() -> LuaResult<()> {
                     .with_context(lua_err_context!())?,
             )
             .with_context(lua_err_context!())?;
-        println!("{:#?}", &pkg);
 
         for s in pkg.source.0 {
             match s.proto {

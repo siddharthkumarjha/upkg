@@ -1,4 +1,7 @@
+use std::sync::LazyLock;
+
 use git2::*;
+use indicatif::*;
 
 pub fn git_url_basename(repo: &str) -> String {
     let mut base_name = match repo.split_once("://") {
@@ -66,12 +69,72 @@ pub fn git_clone<RepoPath: AsRef<std::path::Path>>(
     };
 
     println!("attempting to clone: {url}");
-    println!("basename: {}", basename);
 
-    let clone_path = path.as_ref().join(basename);
+    let clone_path = path.as_ref().join(&basename);
     println!("clone path: {:?}", clone_path);
 
-    Repository::clone(&url, clone_path)
+    let mut fetch_opts = FetchOptions::new();
+    let mut repo_handle = build::RepoBuilder::new();
+
+    fetch_opts.remote_callbacks(setup_rmt_callbacks(basename));
+    repo_handle.fetch_options(fetch_opts);
+
+    repo_handle.clone(&url, &clone_path)
+}
+
+static SIDEBAND_PROGRESS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"^(Counting|Compressing) objects:\s+(\d+)% \((\d+)/(\d+)\)").unwrap()
+});
+
+fn setup_rmt_callbacks<'a>(basename: String) -> RemoteCallbacks<'a> {
+    let pb = ProgressBar::new(100);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{prefix}    {msg}: [{bar:40.bold.dim}] {pos}/{len} ({percent}%)")
+            .unwrap()
+            .progress_chars("=> "),
+    );
+    pb.set_prefix(basename.to_owned());
+    pb.set_message("Git Clone");
+
+    pb.abandon();
+    let pb_rc = std::rc::Rc::new(pb);
+    let pb_transfer = pb_rc.clone();
+    let pb_sideband = pb_rc.clone();
+
+    let mut callbacks = RemoteCallbacks::new();
+
+    callbacks.transfer_progress(move |prog: Progress<'_>| {
+        if prog.total_objects() != prog.received_objects() {
+            pb_transfer.set_length(prog.total_objects() as u64);
+            pb_transfer.set_position(prog.received_objects() as u64);
+            pb_transfer.set_message("Receiving objects");
+        } else {
+            pb_transfer.set_length(prog.total_deltas() as u64);
+            pb_transfer.set_position(prog.indexed_deltas() as u64);
+            pb_transfer.set_message("Resolving deltas");
+        }
+        true
+    });
+
+    callbacks.sideband_progress(move |data: &[u8]| {
+        if let Ok(msg) = str::from_utf8(data) {
+
+            if let Some(caps) = SIDEBAND_PROGRESS_RE.captures(msg) {
+                let stage = &caps[1];
+                let current: u64 = caps[3].parse().unwrap();
+                let total: u64 = caps[4].parse().unwrap();
+
+                pb_sideband.set_length(total);
+                pb_sideband.set_position(current);
+
+                pb_sideband.set_message(stage.to_owned());
+            }
+        }
+        true
+    });
+
+    callbacks
 }
 
 #[cfg(test)]
