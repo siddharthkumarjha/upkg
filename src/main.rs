@@ -74,10 +74,11 @@ fn upkg() -> LuaResult<()> {
             match s.proto {
                 Proto::git => {
                     let url = s.location;
-                    match git_clone::git_clone(&url, std::env::temp_dir(), None) {
-                        Ok(r) => r,
-                        Err(e) => panic!("failed to clone {}", e),
-                    };
+                    git_clone::git_clone(&url, std::env::temp_dir(), None).map_err(
+                        |err| -> LuaError {
+                            LuaError::external(format!("[{}:{}] {}", file!(), line!(), err))
+                        },
+                    )?;
                 }
                 _ => println!("got loc: {}", s.location),
             }
@@ -85,11 +86,13 @@ fn upkg() -> LuaResult<()> {
 
         Ok(())
     } else {
-        Err(lua_err_context!(
-            "{} is not a subpath of {}",
+        Err(LuaError::external(format!(
+            "[{}:{}] {} is not a subpath of {}",
+            file!(),
+            line!(),
             starship_pkgbuild.to_string_lossy(),
             root_path.to_string_lossy()
-        )(()))
+        )))
     }
 }
 

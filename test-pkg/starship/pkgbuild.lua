@@ -38,8 +38,6 @@ Package = {
 	},
 }
 
-print("install dir: ", InstallDir)
-
 function Run(cmd)
 	local handle = io.popen(cmd .. " 2>&1")
 	local output = handle:read("*a")

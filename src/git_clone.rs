@@ -1,3 +1,4 @@
+use crate::io_err_context;
 use std::sync::LazyLock;
 
 use git2::*;
@@ -73,13 +74,28 @@ pub fn git_clone<RepoPath: AsRef<std::path::Path>>(
     let clone_path = path.as_ref().join(&basename);
     println!("clone path: {:?}", clone_path);
 
+    if clone_path.exists() {
+        println!("path exists, removing it...");
+        std::fs::remove_dir_all(&clone_path)
+            .map_err(io_err_context!())
+            .map_err(|err| -> git2::Error {
+                let err_msg = std::format!("{}", err);
+                git2::Error::new(git2::ErrorCode::User, git2::ErrorClass::Os, err_msg)
+            })?;
+    }
+
     let mut fetch_opts = FetchOptions::new();
     let mut repo_handle = build::RepoBuilder::new();
 
     fetch_opts.remote_callbacks(setup_rmt_callbacks(basename));
     repo_handle.fetch_options(fetch_opts);
 
-    repo_handle.clone(&url, &clone_path)
+    repo_handle
+        .clone(&url, &clone_path)
+        .map_err(|err| -> git2::Error {
+            let err_msg = format!("[{}:{}] {}", file!(), line!(), err);
+            git2::Error::from_str(&err_msg)
+        })
 }
 
 static SIDEBAND_PROGRESS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
@@ -90,7 +106,7 @@ fn setup_rmt_callbacks<'a>(basename: String) -> RemoteCallbacks<'a> {
     let pb = ProgressBar::new(100);
     pb.set_style(
         ProgressStyle::default_bar()
-            .template("{prefix}    {msg}: [{bar:40.bold.dim}] {pos}/{len} ({percent}%)")
+            .template("[{prefix}]: {msg}: [{bar:40.bold.dim}] {pos}/{len} ({percent}%)")
             .unwrap()
             .progress_chars("=> "),
     );
@@ -119,7 +135,6 @@ fn setup_rmt_callbacks<'a>(basename: String) -> RemoteCallbacks<'a> {
 
     callbacks.sideband_progress(move |data: &[u8]| {
         if let Ok(msg) = str::from_utf8(data) {
-
             if let Some(caps) = SIDEBAND_PROGRESS_RE.captures(msg) {
                 let stage = &caps[1];
                 let current: u64 = caps[3].parse().unwrap();
