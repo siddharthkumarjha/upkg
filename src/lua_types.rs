@@ -23,7 +23,7 @@ pub struct PkgInfo {
 pub enum Proto {
     git,
     url,
-    file
+    file,
 }
 
 impl LuaGTableValue for Proto {
@@ -96,15 +96,40 @@ impl LuaGTableValue for CheckSumField {
 pub struct CheckSum(pub Vec<CheckSumField>);
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(from = "CheckoutWrapper")]
+#[allow(non_camel_case_types)]
+pub enum CheckoutType {
+    tag(String),
+    branch(String),
+    none
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct CheckoutWrapper {
+    tag: Option<String>,
+    branch: Option<String>,
+}
+
+impl From<CheckoutWrapper> for CheckoutType {
+    fn from(wrapper: CheckoutWrapper) -> CheckoutType {
+        match (wrapper.tag, wrapper.branch) {
+            (Some(t), None) => CheckoutType::tag(t),
+            (None, Some(b)) => CheckoutType::branch(b),
+            (None, None) => CheckoutType::none,
+            (Some(_), Some(_)) => panic!("Cannot specify both tag and branch"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SourceField {
     pub proto: Proto,
 
     #[serde(alias = "url", alias = "file")]
     pub location: String,
 
-    #[serde(alias = "tag", alias = "branch")]
-    #[serde(default)]
-    pub checkout: Option<String>,
+    #[serde(default, flatten)]
+    pub checkout: CheckoutType,
 
     #[serde(default)]
     pub directory: Option<String>,

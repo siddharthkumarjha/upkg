@@ -59,6 +59,43 @@ pub fn git_url_basename(repo: &str) -> String {
     return base_name.to_string();
 }
 
+pub fn checkout_branch(repo: &Repository, branch_name: &str) -> Result<(), git2::Error> {
+    // Find the local branch
+    let branch = repo.find_branch(branch_name, BranchType::Local)?;
+    let branch_ref = branch
+        .get()
+        .name()
+        .ok_or_else(|| git2::Error::from_str("Invalid branch name"))?;
+
+    // Resolve to commit
+    let obj = repo.revparse_single(branch_ref)?;
+    let commit = obj.peel_to_commit()?;
+    let tree = commit.tree()?;
+
+    // Checkout files
+    repo.checkout_tree(tree.as_object(), None)?;
+
+    // Update HEAD to point to the branch
+    repo.set_head(branch_ref)?;
+
+    Ok(())
+}
+
+pub fn checkout_tag(repo: &Repository, tag_name: &str) -> Result<(), git2::Error> {
+    // Resolve tag to object
+    let obj = repo.revparse_single(&format!("refs/tags/{}", tag_name))?;
+    let commit = obj.peel_to_commit()?; // peel in case it’s an annotated tag
+    let tree = commit.tree()?;
+
+    // Checkout files
+    repo.checkout_tree(tree.as_object(), None)?;
+
+    // Detach HEAD to this commit
+    repo.set_head_detached(commit.id())?;
+
+    Ok(())
+}
+
 pub fn git_clone<RepoPath: AsRef<std::path::Path>>(
     url: &str,
     path: RepoPath,

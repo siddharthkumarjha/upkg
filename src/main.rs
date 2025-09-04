@@ -69,16 +69,36 @@ fn upkg() -> LuaResult<()> {
                     .with_context(lua_err_context!())?,
             )
             .with_context(lua_err_context!())?;
+        println!("{:#?}", pkg);
 
         for s in pkg.source.0 {
             match s.proto {
                 Proto::git => {
                     let url = s.location;
-                    git_clone::git_clone(&url, std::env::temp_dir(), None).map_err(
-                        |err| -> LuaError {
+                    let repo_handle = git_clone::git_clone(&url, std::env::temp_dir(), None)
+                        .map_err(|err| -> LuaError {
                             LuaError::external(format!("[{}:{}] {}", file!(), line!(), err))
-                        },
-                    )?;
+                        })?;
+
+                    match s.checkout {
+                        CheckoutType::tag(tag) => {
+                            println!("checkout to tag: {}", &tag);
+                            git_clone::checkout_tag(&repo_handle, &tag).map_err(
+                                |err| -> LuaError {
+                                    LuaError::external(format!("[{}:{}] {}", file!(), line!(), err))
+                                },
+                            )?
+                        }
+                        CheckoutType::branch(branch) => {
+                            println!("checkout to branch: {}", &branch);
+                            git_clone::checkout_branch(&repo_handle, &branch).map_err(
+                                |err| -> LuaError {
+                                    LuaError::external(format!("[{}:{}] {}", file!(), line!(), err))
+                                },
+                            )?
+                        }
+                        CheckoutType::none => (),
+                    }
                 }
                 _ => println!("got loc: {}", s.location),
             }
