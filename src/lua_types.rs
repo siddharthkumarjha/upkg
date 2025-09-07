@@ -1,4 +1,4 @@
-use crate::lua_err_context;
+use crate::lua_err_ctx;
 
 use mlua::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -30,16 +30,16 @@ impl LuaGTableValue for Proto {
     fn global_lua_value(lua: &Lua) -> LuaResult<impl IntoLua> {
         let proto_table = lua
             .create_table()
-            .with_context(lua_err_context!("proto table"))?;
+            .with_context(lua_err_ctx!("proto table"))?;
 
         for proto_type in Proto::iter() {
             let lua_val = lua
                 .to_value(&proto_type)
-                .with_context(lua_err_context!("{:?}", proto_type))?;
+                .with_context(lua_err_ctx!("{:?}", proto_type))?;
 
             proto_table
                 .set(lua_val.clone(), lua_val)
-                .with_context(lua_err_context!("{:?}", proto_type))?;
+                .with_context(lua_err_ctx!("{:?}", proto_type))?;
         }
 
         Ok(proto_table)
@@ -57,16 +57,16 @@ impl LuaGTableValue for CheckSumKind {
     fn global_lua_value(lua: &Lua) -> LuaResult<impl IntoLua> {
         let checksum_kind_table = lua
             .create_table()
-            .with_context(lua_err_context!("checksumkind table"))?;
+            .with_context(lua_err_ctx!("checksumkind table"))?;
 
         for checksum_kind in CheckSumKind::iter() {
             let lua_val = lua
                 .to_value(&checksum_kind)
-                .with_context(lua_err_context!("{:?}", checksum_kind))?;
+                .with_context(lua_err_ctx!("{:?}", checksum_kind))?;
 
             checksum_kind_table
                 .set(lua_val.clone(), lua_val)
-                .with_context(lua_err_context!("{:?}", checksum_kind))?;
+                .with_context(lua_err_ctx!("{:?}", checksum_kind))?;
         }
 
         Ok(checksum_kind_table)
@@ -85,7 +85,7 @@ impl LuaGTableValue for CheckSumField {
         let none_type = CheckSumField::Skip;
         let lua_val = lua
             .to_value(&none_type)
-            .with_context(lua_err_context!("{:?}", none_type))?;
+            .with_context(lua_err_ctx!("{:?}", none_type))?;
 
         Ok(lua_val)
     }
@@ -101,7 +101,7 @@ pub struct CheckSum(pub Vec<CheckSumField>);
 pub enum CheckoutType {
     tag(String),
     branch(String),
-    none
+    none,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

@@ -1,5 +1,5 @@
 #[macro_export]
-macro_rules! lua_err_context {
+macro_rules! lua_err_ctx {
     () => {
         |_| LuaError::external(format!("[{}:{}]", file!(), line!()))
     };
@@ -18,7 +18,7 @@ macro_rules! lua_err_context {
 }
 
 #[macro_export]
-macro_rules! io_err_context {
+macro_rules! io_err_ctx {
     () => {
         |err| std::io::Error::new(err.kind(), format!("[{}:{}] {}", file!(), line!(), err))
     };
@@ -34,5 +34,22 @@ macro_rules! io_err_context {
             format!($fmt, $($arg)*),
             err
         ))
+    };
+}
+
+#[macro_export]
+macro_rules! git_err_ctx {
+    () => {
+        |err| -> git2::Error {
+            let err_msg = format!("[{}:{}] {}", file!(), line!(), err);
+            git2::Error::from_str(&err_msg)
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! git_ok {
+    ($arg:expr) => {
+        $arg.map_err(git_err_ctx!())?
     };
 }

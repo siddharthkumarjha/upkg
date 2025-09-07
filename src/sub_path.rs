@@ -1,4 +1,4 @@
-use crate::io_err_context;
+use crate::io_err_ctx;
 pub use std::path::Path;
 
 pub trait SubPath {
@@ -10,10 +10,10 @@ impl SubPath for Path {
         let base_canon = base
             .as_ref()
             .canonicalize()
-            .map_err(io_err_context!(base.as_ref().to_string_lossy()))?;
+            .map_err(io_err_ctx!(base.as_ref().to_string_lossy()))?;
         let child_canon = self
             .canonicalize()
-            .map_err(io_err_context!(self.to_string_lossy()))?;
+            .map_err(io_err_ctx!(self.to_string_lossy()))?;
 
         if child_canon.starts_with(base_canon) {
             return Ok(true);

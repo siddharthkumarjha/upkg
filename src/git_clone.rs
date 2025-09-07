@@ -1,4 +1,4 @@
-use crate::io_err_context;
+use crate::{git_err_ctx, git_ok, io_err_ctx};
 use std::sync::LazyLock;
 
 use git2::*;
@@ -59,39 +59,64 @@ pub fn git_url_basename(repo: &str) -> String {
     return base_name.to_string();
 }
 
-pub fn checkout_branch(repo: &Repository, branch_name: &str) -> Result<(), git2::Error> {
-    // Find the local branch
-    let branch = repo.find_branch(branch_name, BranchType::Local)?;
-    let branch_ref = branch
-        .get()
-        .name()
-        .ok_or_else(|| git2::Error::from_str("Invalid branch name"))?;
+pub fn checkout_branch(repo: &Repository, branch_name: &str, force: bool) -> Result<(), Error> {
+    // Try to find a local branch first
+    match repo.find_branch(branch_name, BranchType::Local) {
+        Ok(branch) => {
+            let commit = git_ok!(branch.get().peel_to_commit());
 
-    // Resolve to commit
-    let obj = repo.revparse_single(branch_ref)?;
-    let commit = obj.peel_to_commit()?;
-    let tree = commit.tree()?;
+            let mut opts = build::CheckoutBuilder::new();
+            if force {
+                opts.force();
+            } else {
+                opts.safe();
+            }
+            git_ok!(repo.checkout_tree(commit.as_object(), Some(&mut opts)));
 
-    // Checkout files
-    repo.checkout_tree(tree.as_object(), None)?;
+            let branch_ref = git_ok!(
+                branch
+                    .get()
+                    .name()
+                    .ok_or_else(|| Error::from_str("Invalid branch name"))
+            );
+            git_ok!(repo.set_head(branch_ref));
+        }
+        Err(_) => {
+            // Try remote branch: "origin/<branch_name>"
+            let remote_branch_name = format!("origin/{}", branch_name);
+            let remote_branch = git_ok!(repo.find_branch(&remote_branch_name, BranchType::Remote));
+            let commit = git_ok!(remote_branch.get().peel_to_commit());
 
-    // Update HEAD to point to the branch
-    repo.set_head(branch_ref)?;
+            // Create local branch that tracks the remote
+            let mut local = git_ok!(repo.branch(branch_name, &commit, false));
+            git_ok!(local.set_upstream(Some(&remote_branch_name)));
+
+            let mut opts = build::CheckoutBuilder::new();
+            if force {
+                opts.force();
+            } else {
+                opts.safe();
+            }
+
+            git_ok!(repo.checkout_tree(commit.as_object(), Some(&mut opts)));
+            git_ok!(repo.set_head(&format!("refs/heads/{}", branch_name)));
+        }
+    }
 
     Ok(())
 }
 
 pub fn checkout_tag(repo: &Repository, tag_name: &str) -> Result<(), git2::Error> {
     // Resolve tag to object
-    let obj = repo.revparse_single(&format!("refs/tags/{}", tag_name))?;
-    let commit = obj.peel_to_commit()?; // peel in case it’s an annotated tag
-    let tree = commit.tree()?;
+    let obj = git_ok!(repo.revparse_single(&format!("refs/tags/{}", tag_name)));
+    let commit = git_ok!(obj.peel_to_commit()); // peel in case it’s an annotated tag
+    let tree = git_ok!(commit.tree());
 
     // Checkout files
-    repo.checkout_tree(tree.as_object(), None)?;
+    git_ok!(repo.checkout_tree(tree.as_object(), None));
 
     // Detach HEAD to this commit
-    repo.set_head_detached(commit.id())?;
+    git_ok!(repo.set_head_detached(commit.id()));
 
     Ok(())
 }
@@ -114,7 +139,7 @@ pub fn git_clone<RepoPath: AsRef<std::path::Path>>(
     if clone_path.exists() {
         println!("path exists, removing it...");
         std::fs::remove_dir_all(&clone_path)
-            .map_err(io_err_context!())
+            .map_err(io_err_ctx!())
             .map_err(|err| -> git2::Error {
                 let err_msg = std::format!("{}", err);
                 git2::Error::new(git2::ErrorCode::User, git2::ErrorClass::Os, err_msg)
@@ -127,12 +152,7 @@ pub fn git_clone<RepoPath: AsRef<std::path::Path>>(
     fetch_opts.remote_callbacks(setup_rmt_callbacks(basename));
     repo_handle.fetch_options(fetch_opts);
 
-    repo_handle
-        .clone(&url, &clone_path)
-        .map_err(|err| -> git2::Error {
-            let err_msg = format!("[{}:{}] {}", file!(), line!(), err);
-            git2::Error::from_str(&err_msg)
-        })
+    repo_handle.clone(&url, &clone_path).map_err(git_err_ctx!())
 }
 
 static SIDEBAND_PROGRESS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {

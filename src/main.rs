@@ -14,7 +14,7 @@ static LOCAL_INSTALL_PATH: &str = "/home/siddharth/tst/";
 
 fn create_lua_instance() -> LuaResult<Lua> {
     let lua = Lua::new();
-    lua.sandbox(true).with_context(lua_err_context!())?;
+    lua.sandbox(true).with_context(lua_err_ctx!())?;
 
     Ok(lua)
 }
@@ -22,33 +22,33 @@ fn create_lua_instance() -> LuaResult<Lua> {
 fn set_globals(lua: &Lua) -> LuaResult<()> {
     lua.globals()
         .set("Proto", Proto::global_lua_value(lua)?)
-        .with_context(lua_err_context!("setting global Proto table failed"))?;
+        .with_context(lua_err_ctx!("setting global Proto table failed"))?;
 
     lua.globals()
         .set("CheckSumKind", CheckSumKind::global_lua_value(lua)?)
-        .with_context(lua_err_context!("setting global CheckSumKind table failed"))?;
+        .with_context(lua_err_ctx!("setting global CheckSumKind table failed"))?;
 
     lua.globals()
         .set("Skip", CheckSumField::global_lua_value(lua)?)
-        .with_context(lua_err_context!("setting global Skip failed"))?;
+        .with_context(lua_err_ctx!("setting global Skip failed"))?;
 
     lua.globals()
         .set("InstallDir", LOCAL_INSTALL_PATH)
-        .with_context(lua_err_context!("setting global InstallDir failed"))?;
+        .with_context(lua_err_ctx!("setting global InstallDir failed"))?;
 
     Ok(())
 }
 
 fn load_lua<ScriptPath: AsRef<Path>>(lua: &Lua, script_path: ScriptPath) -> LuaResult<()> {
     let script_path_utf8 = script_path.as_ref().to_string_lossy();
-    let data = fs::read(script_path.as_ref()).map_err(lua_err_context!(script_path_utf8))?;
+    let data = fs::read(script_path.as_ref()).map_err(lua_err_ctx!(script_path_utf8))?;
 
     set_globals(lua)?;
 
     lua.load(data)
         .set_name(script_path_utf8.as_ref())
         .exec()
-        .with_context(lua_err_context!(script_path_utf8))?;
+        .with_context(lua_err_ctx!(script_path_utf8))?;
 
     Ok(())
 }
@@ -63,12 +63,8 @@ fn upkg() -> LuaResult<()> {
         load_lua(&lua, starship_pkgbuild)?;
 
         let pkg: Package = lua
-            .from_value(
-                lua.globals()
-                    .get("Package")
-                    .with_context(lua_err_context!())?,
-            )
-            .with_context(lua_err_context!())?;
+            .from_value(lua.globals().get("Package").with_context(lua_err_ctx!())?)
+            .with_context(lua_err_ctx!())?;
         println!("{:#?}", pkg);
 
         for s in pkg.source.0 {
@@ -91,7 +87,7 @@ fn upkg() -> LuaResult<()> {
                         }
                         CheckoutType::branch(branch) => {
                             println!("checkout to branch: {}", &branch);
-                            git_clone::checkout_branch(&repo_handle, &branch).map_err(
+                            git_clone::checkout_branch(&repo_handle, &branch, false).map_err(
                                 |err| -> LuaError {
                                     LuaError::external(format!("[{}:{}] {}", file!(), line!(), err))
                                 },
