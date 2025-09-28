@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+crypto-common = "0.1.6"
 git2 = {version = "0.20.2", features = ["vendored-libgit2"]}
 indicatif = "0.18.0"
 mlua = {version = "0.11.1", features = ["luau", "vendored", "macros", "serde"]}
 regex = "1.11.2"
 serde = {version = "1.0", features = ["derive"]}
+sha2 = "0.10.9"
 strum = {version = "0.27", features = ["derive"]}

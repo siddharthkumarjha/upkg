@@ -205,7 +205,7 @@ pub fn git_sync_with_remote<RepoPath: AsRef<std::path::Path>>(
     url: &str,
     path: RepoPath,
     repo_name: Option<&str>,
-    checkout: CheckoutType,
+    checkout: &CheckoutType,
 ) -> Result<Repository, Error> {
     let basename = match repo_name {
         Some(val) => val.to_string(),
@@ -232,10 +232,6 @@ pub fn git_sync_with_remote<RepoPath: AsRef<std::path::Path>>(
                             git_ok!(checkout_tag(&repo, &new_tag));
                         } else {
                             println!("not updating HEAD, old tag: {}, new tag: {}", tag, new_tag);
-                            println!(
-                                "norm semver old tag: {:?}, new tag: {:?}",
-                                norm_tag, new_tag_norm
-                            );
                         }
                     }
                 }

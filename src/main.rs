@@ -2,6 +2,7 @@ mod err_context;
 mod lua;
 mod proto;
 mod sub_path;
+mod upkg;
 
 use crate::lua::load_lua::*;
 use crate::lua::lua_types::*;
@@ -24,41 +25,19 @@ fn upkg() -> LuaResult<()> {
         lua_ok!(load_lua(&lua, &pkgbuild));
 
         let pkg: Package = lua_ok!(lua.from_value(lua_ok!(lua.globals().get("Package"))));
-        println!("{:#?}", pkg);
 
-        for src in pkg.source.0 {
-            match src.proto {
-                Proto::git => {
-                    let url = src.location;
-                    let build_dir = pkgbuild
-                        .parent()
-                        .ok_or_else(|| {
-                            LuaError::external(format!(
-                                "[{}:{}] couldn't evaluate parent path of: {}",
-                                file!(),
-                                line!(),
-                                pkgbuild.to_string_lossy()
-                            ))
-                        })?
-                        .join("build");
+        let total_steps = 7;
+        let mut current_step = 1;
+        println!("({}/{}) Downloading Deps", current_step, total_steps);
+        lua_ok!(upkg::download_deps::download(&pkg, &pkgbuild));
 
-                    if !build_dir.exists() {
-                        io_ok!(fs::create_dir(&build_dir), build_dir.to_string_lossy());
-                    }
+        current_step = current_step + 1;
+        println!("({}/{}) Verifying Deps", current_step, total_steps);
+        lua_ok!(upkg::verify_deps::verify(&pkg, &pkgbuild));
 
-                    git_2_lua_ok!(git_clone::git_sync_with_remote(
-                        &url,
-                        build_dir,
-                        src.repo_name.as_deref(),
-                        src.checkout
-                    ));
-                }
-                Proto::url => {}
-                Proto::file => {
-                    println!("got loc: {}", src.location);
-                }
-            }
-        }
+        current_step = current_step + 1;
+        println!("({}/{}) Extracting Deps", current_step, total_steps);
+        lua_ok!(upkg::extract_deps::extract(&pkg, &pkgbuild));
 
         Ok(())
     } else {
