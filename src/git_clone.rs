@@ -1,10 +1,10 @@
-use crate::{git_err_ctx, git_ok, io_err_ctx};
+use crate::*;
 use std::sync::LazyLock;
 
 use git2::*;
 use indicatif::*;
 
-pub fn git_url_basename(repo: &str) -> String {
+fn git_url_basename(repo: &str) -> String {
     let mut base_name = match repo.split_once("://") {
         Some((_, rhs)) => rhs,
         None => repo,
@@ -59,7 +59,7 @@ pub fn git_url_basename(repo: &str) -> String {
     return base_name.to_string();
 }
 
-pub fn checkout_branch(repo: &Repository, branch_name: &str, force: bool) -> Result<(), Error> {
+fn checkout_branch(repo: &Repository, branch_name: &str, force: bool) -> Result<(), Error> {
     // Try to find a local branch first
     match repo.find_branch(branch_name, BranchType::Local) {
         Ok(branch) => {
@@ -106,7 +106,7 @@ pub fn checkout_branch(repo: &Repository, branch_name: &str, force: bool) -> Res
     Ok(())
 }
 
-pub fn checkout_tag(repo: &Repository, tag_name: &str) -> Result<(), git2::Error> {
+fn checkout_tag(repo: &Repository, tag_name: &str) -> Result<(), git2::Error> {
     // Resolve tag to object
     let obj = git_ok!(repo.revparse_single(&format!("refs/tags/{}", tag_name)));
     let commit = git_ok!(obj.peel_to_commit()); // peel in case it’s an annotated tag
@@ -121,38 +121,158 @@ pub fn checkout_tag(repo: &Repository, tag_name: &str) -> Result<(), git2::Error
     Ok(())
 }
 
-pub fn git_clone<RepoPath: AsRef<std::path::Path>>(
+fn latest_tag_by_creation(repo: &Repository) -> Result<Option<String>, Error> {
+    let tag_names = git_ok!(repo.tag_names(None));
+    let mut latest: Option<(String, i64)> = None;
+
+    for tag_name in tag_names.iter().flatten() {
+        if let Ok(obj) = repo.revparse_single(tag_name) {
+            let tag_time = if obj.kind() == Some(ObjectType::Tag) {
+                // Annotated tag: use tagger timestamp
+                let tag = obj.as_tag().unwrap();
+                tag.tagger().map(|sig| sig.when().seconds()).unwrap_or(0)
+            } else if obj.kind() == Some(ObjectType::Commit) {
+                // Lightweight tag: use commit timestamp as fallback
+                let commit = git_ok!(obj.peel_to_commit());
+                commit.time().seconds()
+            } else {
+                0
+            };
+
+            match latest {
+                Some((_, ts)) if ts >= tag_time => {}
+                _ => latest = Some((tag_name.to_string(), tag_time)),
+            }
+        }
+    }
+
+    Ok(latest.map(|(name, _)| name))
+}
+
+fn fetch_repo<RepoPath: AsRef<std::path::Path>>(
+    url: &str,
+    clone_path: RepoPath,
+    basename: String,
+) -> Result<Repository, Error> {
+    let repo = git_ok!(Repository::open(&clone_path));
+
+    {
+        let mut fetch_opts = FetchOptions::new();
+        fetch_opts.remote_callbacks(setup_rmt_callbacks(basename));
+
+        let mut remote = git_ok!(
+            repo.find_remote("origin")
+                .or_else(|_| repo.remote("origin", url))
+        );
+
+        git_ok!(remote.fetch(
+            &["refs/heads/*:refs/remotes/origin/*"],
+            Some(&mut fetch_opts),
+            None,
+        ));
+    }
+
+    Ok(repo)
+}
+
+fn clone_repo<RepoPath: AsRef<std::path::Path>>(
+    url: &str,
+    clone_path: RepoPath,
+    basename: String,
+) -> Result<Repository, Error> {
+    let mut fetch_opts = FetchOptions::new();
+    fetch_opts.remote_callbacks(setup_rmt_callbacks(basename));
+
+    let mut repo_handle = build::RepoBuilder::new();
+    repo_handle.fetch_options(fetch_opts);
+
+    repo_handle
+        .clone(url, clone_path.as_ref())
+        .map_err(git_err_ctx!())
+}
+
+static SEMVER_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"\d+").unwrap());
+
+fn normalize_tag_to_semver(tag: &str) -> Vec<u32> {
+    // Matches consecutive digits
+    return SEMVER_RE
+        .find_iter(tag)
+        .filter_map(|m| m.as_str().parse::<u32>().ok())
+        .collect();
+}
+
+pub fn git_sync_with_remote<RepoPath: AsRef<std::path::Path>>(
     url: &str,
     path: RepoPath,
     repo_name: Option<&str>,
+    checkout: CheckoutType,
 ) -> Result<Repository, Error> {
     let basename = match repo_name {
         Some(val) => val.to_string(),
         None => git_url_basename(&url),
     };
-
     println!("attempting to clone: {url}");
 
     let clone_path = path.as_ref().join(&basename);
     println!("clone path: {:?}", clone_path);
 
     if clone_path.exists() {
-        println!("path exists, removing it...");
-        std::fs::remove_dir_all(&clone_path)
-            .map_err(io_err_ctx!())
-            .map_err(|err| -> git2::Error {
-                let err_msg = std::format!("{}", err);
-                git2::Error::new(git2::ErrorCode::User, git2::ErrorClass::Os, err_msg)
-            })?;
+        println!("path exists, trying to sync repo with remote...");
+        let repo = git_ok!(fetch_repo(url, clone_path, basename));
+
+        {
+            match checkout {
+                CheckoutType::tag(tag) => {
+                    let norm_tag = normalize_tag_to_semver(&tag);
+
+                    if let Some(new_tag) = git_ok!(latest_tag_by_creation(&repo)) {
+                        let new_tag_norm = normalize_tag_to_semver(&new_tag);
+                        if norm_tag < new_tag_norm {
+                            println!("updating HEAD to tag: {}", new_tag);
+                            git_ok!(checkout_tag(&repo, &new_tag));
+                        } else {
+                            println!("not updating HEAD, old tag: {}, new tag: {}", tag, new_tag);
+                            println!(
+                                "norm semver old tag: {:?}, new tag: {:?}",
+                                norm_tag, new_tag_norm
+                            );
+                        }
+                    }
+                }
+                CheckoutType::branch(branch) => {
+                    let remote_ref = format!("refs/remotes/origin/{}", branch);
+
+                    let target_ref_id = git_ok!(repo.refname_to_id(&remote_ref));
+                    let target_commit = git_ok!(repo.find_commit(target_ref_id));
+
+                    println!("updating HEAD to branch: {}", branch);
+                    git_ok!(repo.reset(target_commit.as_object(), ResetType::Hard, None));
+                }
+                CheckoutType::none => (),
+            }
+        }
+
+        Ok(repo)
+    } else {
+        println!("trying to clone repo...");
+
+        let repo_handle = git_ok!(clone_repo(url, clone_path, basename));
+        match checkout {
+            CheckoutType::tag(tag) => {
+                println!("checkout to tag: {}", tag);
+                if let Some(new_tag) = git_ok!(latest_tag_by_creation(&repo_handle)) {
+                    git_ok!(checkout_tag(&repo_handle, &new_tag));
+                }
+            }
+            CheckoutType::branch(branch) => {
+                println!("checkout to branch: {}", &branch);
+                git_ok!(git_clone::checkout_branch(&repo_handle, &branch, false));
+            }
+            CheckoutType::none => (),
+        }
+
+        Ok(repo_handle)
     }
-
-    let mut fetch_opts = FetchOptions::new();
-    let mut repo_handle = build::RepoBuilder::new();
-
-    fetch_opts.remote_callbacks(setup_rmt_callbacks(basename));
-    repo_handle.fetch_options(fetch_opts);
-
-    repo_handle.clone(&url, &clone_path).map_err(git_err_ctx!())
 }
 
 static SIDEBAND_PROGRESS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
@@ -170,7 +290,6 @@ fn setup_rmt_callbacks<'a>(basename: String) -> RemoteCallbacks<'a> {
     pb.set_prefix(basename.to_owned());
     pb.set_message("Git Clone");
 
-    pb.abandon();
     let pb_rc = std::rc::Rc::new(pb);
     let pb_transfer = pb_rc.clone();
     let pb_sideband = pb_rc.clone();

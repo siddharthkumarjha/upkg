@@ -18,6 +18,17 @@ macro_rules! lua_err_ctx {
 }
 
 #[macro_export]
+macro_rules! lua_ok {
+    ($arg:expr) => {
+        $arg.map_err(lua_err_ctx!())?
+    };
+
+    ($arg:expr, $($fmt:tt)*) => {
+        $arg.map_err(lua_err_ctx!($($fmt)*))?
+    };
+}
+
+#[macro_export]
 macro_rules! io_err_ctx {
     () => {
         |err| std::io::Error::new(err.kind(), format!("[{}:{}] {}", file!(), line!(), err))
@@ -38,6 +49,17 @@ macro_rules! io_err_ctx {
 }
 
 #[macro_export]
+macro_rules! io_ok {
+    ($arg:expr) => {
+        $arg.map_err(io_err_ctx!())?
+    };
+
+    ($arg:expr, $($fmt:tt)*) => {
+        $arg.map_err(io_err_ctx!($($fmt)*))?
+    };
+}
+
+#[macro_export]
 macro_rules! git_err_ctx {
     () => {
         |err| -> git2::Error {
@@ -51,5 +73,19 @@ macro_rules! git_err_ctx {
 macro_rules! git_ok {
     ($arg:expr) => {
         $arg.map_err(git_err_ctx!())?
+    };
+}
+
+#[macro_export]
+macro_rules! git_2_lua_err_ctx {
+    () => {
+        |err| LuaError::external(format!("[{}:{}] {}", file!(), line!(), err))
+    };
+}
+
+#[macro_export]
+macro_rules! git_2_lua_ok {
+    ($arg:expr) => {
+        $arg.map_err(git_2_lua_err_ctx!())?
     };
 }

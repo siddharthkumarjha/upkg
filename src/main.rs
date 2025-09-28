@@ -14,27 +14,34 @@ static LOCAL_INSTALL_PATH: &str = "/home/siddharth/tst/";
 
 fn create_lua_instance() -> LuaResult<Lua> {
     let lua = Lua::new();
-    lua.sandbox(true).with_context(lua_err_ctx!())?;
+    lua_ok!(lua.sandbox(true));
 
     Ok(lua)
 }
 
 fn set_globals(lua: &Lua) -> LuaResult<()> {
-    lua.globals()
-        .set("Proto", Proto::global_lua_value(lua)?)
-        .with_context(lua_err_ctx!("setting global Proto table failed"))?;
+    lua_ok!(
+        lua.globals()
+            .set("Proto", lua_ok!(Proto::global_lua_value(lua))),
+        "setting global Proto table failed"
+    );
 
-    lua.globals()
-        .set("CheckSumKind", CheckSumKind::global_lua_value(lua)?)
-        .with_context(lua_err_ctx!("setting global CheckSumKind table failed"))?;
+    lua_ok!(
+        lua.globals()
+            .set("CheckSumKind", lua_ok!(CheckSumKind::global_lua_value(lua))),
+        "setting global CheckSumKind table failed"
+    );
 
-    lua.globals()
-        .set("Skip", CheckSumField::global_lua_value(lua)?)
-        .with_context(lua_err_ctx!("setting global Skip failed"))?;
+    lua_ok!(
+        lua.globals()
+            .set("Skip", lua_ok!(CheckSumField::global_lua_value(lua))),
+        "setting global Skip failed"
+    );
 
-    lua.globals()
-        .set("InstallDir", LOCAL_INSTALL_PATH)
-        .with_context(lua_err_ctx!("setting global InstallDir failed"))?;
+    lua_ok!(
+        lua.globals().set("InstallDir", LOCAL_INSTALL_PATH),
+        "setting global InstallDir failed"
+    );
 
     Ok(())
 }
@@ -45,10 +52,10 @@ fn load_lua<ScriptPath: AsRef<Path>>(lua: &Lua, script_path: ScriptPath) -> LuaR
 
     set_globals(lua)?;
 
-    lua.load(data)
-        .set_name(script_path_utf8.as_ref())
-        .exec()
-        .with_context(lua_err_ctx!(script_path_utf8))?;
+    lua_ok!(
+        lua.load(data).set_name(script_path_utf8.as_ref()).exec(),
+        script_path_utf8
+    );
 
     Ok(())
 }
@@ -57,46 +64,42 @@ fn upkg() -> LuaResult<()> {
     let lua = create_lua_instance()?;
 
     let root_path = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let starship_pkgbuild = root_path.join("test-pkg/starship/pkgbuild.lua");
+    let pkgbuild = root_path.join("test-pkg/starship/pkgbuild.lua");
 
-    if starship_pkgbuild.is_subpath_of(root_path)? {
-        load_lua(&lua, starship_pkgbuild)?;
+    if pkgbuild.is_subpath_of(root_path)? {
+        load_lua(&lua, &pkgbuild)?;
 
-        let pkg: Package = lua
-            .from_value(lua.globals().get("Package").with_context(lua_err_ctx!())?)
-            .with_context(lua_err_ctx!())?;
+        let pkg: Package = lua_ok!(lua.from_value(lua_ok!(lua.globals().get("Package"))));
         println!("{:#?}", pkg);
 
-        for s in pkg.source.0 {
-            match s.proto {
+        for src in pkg.source.0 {
+            match src.proto {
                 Proto::git => {
-                    let url = s.location;
-                    let repo_handle = git_clone::git_clone(&url, std::env::temp_dir(), None)
-                        .map_err(|err| -> LuaError {
-                            LuaError::external(format!("[{}:{}] {}", file!(), line!(), err))
-                        })?;
+                    let url = src.location;
+                    let build_dir = pkgbuild
+                        .parent()
+                        .ok_or_else(|| {
+                            LuaError::external(format!(
+                                "[{}:{}] couldn't evaluate parent path of: {}",
+                                file!(),
+                                line!(),
+                                pkgbuild.to_string_lossy()
+                            ))
+                        })?
+                        .join("build");
 
-                    match s.checkout {
-                        CheckoutType::tag(tag) => {
-                            println!("checkout to tag: {}", &tag);
-                            git_clone::checkout_tag(&repo_handle, &tag).map_err(
-                                |err| -> LuaError {
-                                    LuaError::external(format!("[{}:{}] {}", file!(), line!(), err))
-                                },
-                            )?
-                        }
-                        CheckoutType::branch(branch) => {
-                            println!("checkout to branch: {}", &branch);
-                            git_clone::checkout_branch(&repo_handle, &branch, false).map_err(
-                                |err| -> LuaError {
-                                    LuaError::external(format!("[{}:{}] {}", file!(), line!(), err))
-                                },
-                            )?
-                        }
-                        CheckoutType::none => (),
+                    if !build_dir.exists() {
+                        io_ok!(fs::create_dir(&build_dir), build_dir.to_string_lossy());
                     }
+
+                    git_2_lua_ok!(git_clone::git_sync_with_remote(
+                        &url,
+                        build_dir,
+                        src.repo_name.as_deref(),
+                        src.checkout
+                    ));
                 }
-                _ => println!("got loc: {}", s.location),
+                _ => println!("got loc: {}", src.location),
             }
         }
 
@@ -106,7 +109,7 @@ fn upkg() -> LuaResult<()> {
             "[{}:{}] {} is not a subpath of {}",
             file!(),
             line!(),
-            starship_pkgbuild.to_string_lossy(),
+            pkgbuild.to_string_lossy(),
             root_path.to_string_lossy()
         )))
     }

@@ -25,7 +25,7 @@ Package = {
 			proto = Proto.git,
 			url = github_link,
 			tag = pkg_tag,
-			directory = "starship",
+			repo_name = "starship",
 		},
 		{ proto = Proto.file, file = "./0001-fix-rust-1.89.0-warnings-and-errors-blocking-CI-pipe.patch" },
 		{ proto = Proto.file, file = "./0002-fix-git-tests-spawning-an-editor.patch" },
@@ -84,13 +84,15 @@ function Install()
 		"install -Dm 755 target/release/starship -t " .. InstallDir .. "/usr/bin",
 		"install -Dm 644 starship/LICENSE -t " .. InstallDir .. "/usr/share/licenses/starship/",
 		"install -dm 755 "
-			.. InstallDir
-			.. "/usr/share/{bash-completion/completions,elvish/lib,fish/vendor_completions.d,zsh/site-functions}/",
-		"./target/release/starship completions bash > " .. InstallDir .. "/usr/share/bash-completion/completions/starship",
+		.. InstallDir
+		.. "/usr/share/{bash-completion/completions,elvish/lib,fish/vendor_completions.d,zsh/site-functions}/",
+		"./target/release/starship completions bash > "
+		.. InstallDir
+		.. "/usr/share/bash-completion/completions/starship",
 		"./target/release/starship completions elvish > " .. InstallDir .. "/usr/share/elvish/lib/starship.elv",
 		"./target/release/starship completions fish > "
-			.. InstallDir
-			.. "/usr/share/fish/vendor_completions.d/starship.fish",
+		.. InstallDir
+		.. "/usr/share/fish/vendor_completions.d/starship.fish",
 		"./target/release/starship completions zsh > " .. InstallDir .. "/usr/share/zsh/site-functions/_starship",
 	}, "\n")
 	print(install_starship)
@@ -120,13 +122,13 @@ function Verify()
 			if actual_sha ~= Package.checksum[i].digest then
 				error(
 					"CheckSum "
-						.. Package.checksum[i].kind
-						.. " mismatch, expected: "
-						.. Package.checksum[i].digest
-						.. " got "
-						.. actual_sha
-						.. " for file "
-						.. file_name
+					.. Package.checksum[i].kind
+					.. " mismatch, expected: "
+					.. Package.checksum[i].digest
+					.. " got "
+					.. actual_sha
+					.. " for file "
+					.. file_name
 				)
 			else
 				print(Package.checksum[i].kind .. " for " .. file_name .. " successfully validated")

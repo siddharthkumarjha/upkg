@@ -132,7 +132,7 @@ pub struct SourceField {
     pub checkout: CheckoutType,
 
     #[serde(default)]
-    pub directory: Option<String>,
+    pub repo_name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
